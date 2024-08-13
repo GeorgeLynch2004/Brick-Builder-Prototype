@@ -1,0 +1,27 @@
+{
+  "types": [
+    {"type":"feat","section":"Features"},
+    {"type":"fix","section":"Bug Fixes"},
+    {"type":"test","section":"Tests", "hidden": true},
+    {"type":"build","section":"Build System"},
+    {"type":"ci","hidden":true}
+  ],
+  "bumpFiles": [
+    {
+      "filename": "Packages/com.github.homuler.mediapipe/package.json",
+      "type": "json"
+    },
+    {
+      "filename": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "updater": "issue-template-version-updater.js"
+    },
+    {
+      "filename": ".github/ISSUE_TEMPLATE/build-install-issue.yml",
+      "updater": "issue-template-version-updater.js"
+    },
+    {
+      "filename": ".github/ISSUE_TEMPLATE/support.yml",
+      "updater": "issue-template-version-updater.js"
+    }
+  ]
+}
