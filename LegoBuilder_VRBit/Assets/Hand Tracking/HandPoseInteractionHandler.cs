@@ -2,18 +2,29 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
+using System;
 
 public class HandPoseInteractionHandler : MonoBehaviour
 {
     [SerializeField] private Transform indexTip;
     [SerializeField] private Transform thumbTip;
     [SerializeField] private bool isPinching;
-    [SerializeField] private List<GameObject> objectsInCollision;
+    [SerializeField] private GameObject objectInCollision;
     [SerializeField] private GameObject objectInHand;
 
     private void Update() {
 
         transform.position = 0.5f*(indexTip.position + thumbTip.position);
+
+        try
+        {
+            objectInHand = transform.GetChild(0).gameObject;
+        }
+        catch (Exception e)
+        {
+            objectInHand = null;
+        }
+        
 
         if (objectInHand != null){objectInHand.transform.position = transform.position;}
         
@@ -25,47 +36,40 @@ public class HandPoseInteractionHandler : MonoBehaviour
 
     private void OnTriggerEnter(Collider other) 
     {
-        if (!objectsInCollision.Contains(other.gameObject))
+        if (objectInCollision == null)
         {
-            objectsInCollision.Add(other.gameObject);
+            objectInCollision = other.gameObject;
         }
+        
     }
 
     private void OnTriggerExit(Collider other) 
     {
-        if (objectsInCollision.Contains(other.gameObject))
-        {
-            objectsInCollision.Remove(other.gameObject);
-        }
+        objectInCollision = null;
     }
 
     private void CheckForGrab()
     {
-        if (isPinching && objectsInCollision.Count > 0)
+        // To pick up an object
+        if (isPinching && objectInCollision != null && objectInHand == null)
         {
-            objectInHand = objectsInCollision[0];
-            objectInHand.transform.SetParent(transform);
-            objectsInCollision.RemoveAt(0);
-
-            Rigidbody objectRigidbody = objectInHand.GetComponent<Rigidbody>();
-            if (objectRigidbody != null)
-            {
-                objectRigidbody.isKinematic = true;
-            }
+            objectInCollision.transform.SetParent(transform);
+            objectInCollision = null;
         }
-
-        if (!isPinching && objectInHand != null)
+        // To release an object
+        else if (!isPinching && objectInHand != null)
         {
-            objectInHand.transform.SetParent(null);
-            objectsInCollision.Add(objectInHand);
-
-            Rigidbody objectRigidbody = objectInHand.GetComponent<Rigidbody>();
-            if (objectRigidbody != null)
-            {
-                objectRigidbody.isKinematic = false;
-            }
-
-            objectInHand = null;
+            transform.DetachChildren();
         }
     }
+
+    public void AssignObjectInHand(GameObject obj)
+    {
+
+        objectInHand = Instantiate(obj);
+        objectInHand.transform.SetParent(transform);
+    }
+
+    public bool IsPinching() {return isPinching;}
+    public bool HandsFull() {return objectInHand != null;}
 }
