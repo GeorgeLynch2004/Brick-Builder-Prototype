@@ -4,10 +4,12 @@
 TagManager:
   serializedVersion: 2
   tags:
-  - Brick_developable
-  - Brick_smooth
   - Tilemap
   - Ghost Brick
+  - Brick
+  - Snap Point
+  - Baseplate
+  - Interaction Handler
   layers:
   - Default
   - TransparentFX
@@ -15,9 +17,9 @@ TagManager:
   - 
   - Water
   - UI
-  - Brick_Developable
-  - Brick_Smooth
-  - Tilemap
+  - Brick
+  - 
+  - 
   - 
   - 
   - 

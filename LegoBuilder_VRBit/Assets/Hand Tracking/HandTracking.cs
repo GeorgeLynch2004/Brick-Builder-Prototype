@@ -4,13 +4,13 @@ using UnityEngine;
 
 public class HandTracking : MonoBehaviour
 {
-    // Start is called before the first frame update
     public UDPReceive udpReceive;
     public GameObject[] handPoints;
     [SerializeField] private GameObject m_HandParent;
     [SerializeField] public Vector3 m_HandPositionOffset;
     [SerializeField] private Vector3 m_HandRotationOffset;
     [SerializeField] private float estimatedDistance;
+    [SerializeField] private float standardHandSize; // Adjust this value as needed
 
     void Update()
     {
@@ -29,12 +29,10 @@ public class HandTracking : MonoBehaviour
         {
             // Parse the distance (last element)
             string rawDistance = points[points.Length - 1].Trim();
-            Debug.Log($"Raw distance value: '{rawDistance}'");
 
             if (float.TryParse(rawDistance, out float distance))
             {
                 estimatedDistance = distance;
-                Debug.Log($"Parsed distance: {estimatedDistance} cm");
             }
             else
             {
@@ -43,6 +41,7 @@ public class HandTracking : MonoBehaviour
 
             m_HandPositionOffset.z = estimatedDistance;
 
+            Vector3[] rawLandmarks = new Vector3[21];
 
             // Parse all the lm points
             for (int i = 0; i < 21; i++)
@@ -54,12 +53,19 @@ public class HandTracking : MonoBehaviour
                     x = 7 - x / 100;
                     y = y / 100;
                     z = z / 100;
-                    handPoints[i].transform.localPosition = new Vector3(x, y, z) + m_HandPositionOffset;
+                    rawLandmarks[i] = new Vector3(x, y, z);
                 }
                 else
                 {
                     Debug.LogWarning($"Failed to parse coordinates for point {i}");
                 }
+            }
+
+            Vector3[] normalizedLandmarks = NormalizeHandSize(rawLandmarks);
+
+            for (int i = 0; i < 21; i++)
+            {
+                handPoints[i].transform.localPosition = normalizedLandmarks[i] + m_HandPositionOffset;
             }
 
             m_HandParent.transform.localEulerAngles = m_HandRotationOffset;
@@ -68,5 +74,24 @@ public class HandTracking : MonoBehaviour
         {
             Debug.LogWarning("Received data does not contain enough points");
         }
+    }
+
+    private Vector3[] NormalizeHandSize(Vector3[] landmarks)
+    {
+        Vector3 wristPosition = landmarks[5];
+        Vector3 middleFingerTipPosition = landmarks[17]; // Assuming index 12 is the middle fingertip
+
+        float currentSize = Vector3.Distance(wristPosition, middleFingerTipPosition);
+        float scaleFactor = standardHandSize / currentSize;
+
+        Vector3[] normalizedLandmarks = new Vector3[landmarks.Length];
+
+        for (int i = 0; i < landmarks.Length; i++)
+        {
+            Vector3 relativePosition = landmarks[i] - wristPosition;
+            normalizedLandmarks[i] = wristPosition + (relativePosition * scaleFactor);
+        }
+
+        return normalizedLandmarks;
     }
 }
