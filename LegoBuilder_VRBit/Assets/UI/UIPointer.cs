@@ -16,6 +16,9 @@ public class UIPointer : MonoBehaviour
     [SerializeField, Tooltip("Current Collision")]
     private GameObject currentCollision;
 
+    [SerializeField] private Sprite[] cursorImages;
+    [SerializeField] private Image cursorObject;
+
     private void Update()
     {
         UpdateTransform();
@@ -24,11 +27,11 @@ public class UIPointer : MonoBehaviour
         {
             if (handPoseInteractionHandler.IsPinching())
             {
-                GrabBrickOption();
+                GrabOption();
             }
             else
             {
-                ChangeColour(Color.red);
+                ChangeVisuals(Color.red, cursorImages[0]);
             }
         }
     }
@@ -39,10 +42,10 @@ public class UIPointer : MonoBehaviour
         GetComponent<RectTransform>().anchoredPosition = new Vector2(interactionIndicatorObject.position.x * movementMultiplier, interactionIndicatorObject.position.y * movementMultiplier) + offsetVector;
     }
 
-    private void GrabBrickOption()
+    private void GrabOption()
     {
         // change colour to green
-        ChangeColour(Color.blue);
+        ChangeVisuals(Color.blue, cursorImages[1]);
 
         // check for if there is a collision with a brick option UI
         if (currentCollision.GetComponent<BrickOption>() != null && !handPoseInteractionHandler.HandsFull())
@@ -50,15 +53,28 @@ public class UIPointer : MonoBehaviour
             handPoseInteractionHandler.AssignObjectInHand(currentCollision.GetComponent<BrickOption>().GetPrefab());
         }
 
+        // check for if there is a collision with a baseplate rotation button
+        if (currentCollision.GetComponent<BaseplateRotationButton>() != null && !handPoseInteractionHandler.HandsFull())
+        {
+            BaseplateRotationButton baseplateRotation = currentCollision.GetComponent<BaseplateRotationButton>();
+            baseplateRotation.RotateBaseplate(baseplateRotation.direction);
+        }
+
     }
 
-    private void ChangeColour(Color color)
+    private void ChangeVisuals(Color color, Sprite cursor)
     {
         Image image = GetComponent<Image>();
         image.color = color;
+        cursorObject.sprite = cursor;
     }
 
-    private void OnTriggerEnter2D(Collider2D other) {
+    public GameObject GetCurrentCollision()
+    {
+        return currentCollision;
+    }
+
+    private void OnTriggerStay2D(Collider2D other) {
         if (currentCollision == null)
         {
             currentCollision = other.gameObject;

@@ -21,6 +21,11 @@ public class HandPoseInteractionHandler : MonoBehaviour
     [SerializeField] private Vector3 objectRotationZOffset;
     [SerializeField] private Vector3 objectRotationXOffset;
     [SerializeField] private bool releaseImpulse;
+    [SerializeField] private Animator handModelAnimator;
+    [SerializeField] private Outline outline;
+    [SerializeField] private AudioSource selectSound;
+
+    private Quaternion objectInHandRotation;
 
     private void Update() {
 
@@ -36,26 +41,45 @@ public class HandPoseInteractionHandler : MonoBehaviour
         }
         
 
-        if (objectInHand != null){objectInHand.transform.position = transform.position;}
+        if (objectInHand != null)
+        {
+            objectInHand.transform.position = transform.position;
+            outline.OutlineColor = (Color.green);
+        }
+        else
+        {
+            outline.OutlineColor = (Color.white);
+        }
         
 
         isPinching = Vector3.Distance(indexTip.position, thumbTip.position) < .5f;
 
+        if (isPinching)
+        {
+            if (handModelAnimator != null){handModelAnimator.SetBool("Pinching", true);}
+        }
+        else
+        {
+            if (handModelAnimator != null){handModelAnimator.SetBool("Pinching", false);}
+        }
+
         CheckForGrab();
+
+        // Adjust rotation
+        float angleZ = UpdateObjectRotation(wrist.position, angleAssistZ.position, middleBase.position);
+        float angleX = UpdateObjectRotation(wrist.position, angleAssistX.position, middleBase.position);
+
+        Quaternion rotationZ = Quaternion.Euler(angleZ, 0, 0);
+        Quaternion rotationX = Quaternion.Euler(-90f, angleX -90f, 0);
+
+        Quaternion finalRotation = rotationZ * rotationX;
+
+        objectInHandRotation = finalRotation;
 
         if (objectInHand != null)
         {
             // Ensure object in hand collider is trigger
             objectInHand.GetComponent<Collider>().isTrigger = true;
-
-            // Adjust rotation
-            float angleZ = UpdateObjectRotation(wrist.position, angleAssistZ.position, middleBase.position);
-            float angleX = UpdateObjectRotation(wrist.position, angleAssistX.position, middleBase.position);
-
-            Quaternion rotationZ = Quaternion.Euler(angleZ, 0, 0);
-            Quaternion rotationX = Quaternion.Euler(-90f, angleX -90f, 0);
-
-            Quaternion finalRotation = rotationZ * rotationX;
 
             objectInHand.transform.rotation = finalRotation;
         }
@@ -82,6 +106,8 @@ public class HandPoseInteractionHandler : MonoBehaviour
         // To pick up an object
         if (isPinching && objectInCollision != null && objectInHand == null)
         {
+            CreateSoundObject(selectSound.clip);
+
             objectInCollision.transform.SetParent(transform);
             objectInCollision.GetComponent<Collider>().isTrigger = true;
             
@@ -133,5 +159,18 @@ public class HandPoseInteractionHandler : MonoBehaviour
 
     public bool IsPinching() {return isPinching;}
     public bool HandsFull() {return objectInHand != null;}
+
+    public Quaternion GetRotation(){return objectInHandRotation;}
+
+    private IEnumerator CreateSoundObject(AudioClip clip)
+    {
+        GameObject soundObject = new GameObject();
+        soundObject.AddComponent<AudioSource>();
+        soundObject.GetComponent<AudioSource>().clip = clip;
+        soundObject = Instantiate(soundObject);
+        soundObject.GetComponent<AudioSource>().Play();
+        yield return new WaitForSeconds(clip.length);
+        Destroy(soundObject);
+    }
 
 }

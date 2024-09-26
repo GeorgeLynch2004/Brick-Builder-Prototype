@@ -11,6 +11,7 @@ public class HandTracking : MonoBehaviour
     [SerializeField] private Vector3 m_HandRotationOffset;
     [SerializeField] private float estimatedDistance;
     [SerializeField] private float standardHandSize; // Adjust this value as needed
+    [SerializeField] private Vector3[] normalizedLandmarks;
 
     void Update()
     {
@@ -61,11 +62,12 @@ public class HandTracking : MonoBehaviour
                 }
             }
 
-            Vector3[] normalizedLandmarks = NormalizeHandSize(rawLandmarks);
+            normalizedLandmarks = NormalizeHandSize(rawLandmarks);
 
             for (int i = 0; i < 21; i++)
             {
-                handPoints[i].transform.localPosition = normalizedLandmarks[i] + m_HandPositionOffset;
+                normalizedLandmarks[i] += m_HandPositionOffset;
+                handPoints[i].transform.localPosition = normalizedLandmarks[i];
             }
 
             m_HandParent.transform.localEulerAngles = m_HandRotationOffset;
@@ -92,6 +94,11 @@ public class HandTracking : MonoBehaviour
             normalizedLandmarks[i] = wristPosition + (relativePosition * scaleFactor);
         }
 
+        return normalizedLandmarks;
+    }
+
+    public Vector3[] GetNormalizedLandmarks()
+    {
         return normalizedLandmarks;
     }
 }

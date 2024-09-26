@@ -14,6 +14,8 @@ public class BrickSnapper : MonoBehaviour
     [SerializeField] private bool debugMode;
     [SerializeField] private GameObject ghostBrickInstance;
     [SerializeField] private BrickSnapper currentTargetBrick;
+    [SerializeField] private AudioSource snapSound;
+    [SerializeField] private AudioSource breakSound;
     public bool brickInHand;
 
     private void Start() {
@@ -33,17 +35,21 @@ public class BrickSnapper : MonoBehaviour
     {
 
         // We only want the brick in the hand of the player to handle the snapping mechanism
-        if (transform.parent.CompareTag("Interaction Handler"))
+        if (transform.parent != null)
         {
-            brickInHand = true;
-            handPoseInteractionHandler = transform.parent.GetComponent<HandPoseInteractionHandler>();
-            HandleSnapping();
+            if (transform.parent.CompareTag("Interaction Handler"))
+            {
+                brickInHand = true;
+                handPoseInteractionHandler = transform.parent.GetComponent<HandPoseInteractionHandler>();
+                HandleSnapping();
+            }
+            else
+            {
+                brickInHand = false;
+                handPoseInteractionHandler = null;
+            }
         }
-        else
-        {
-            brickInHand = false;
-            handPoseInteractionHandler = null;
-        }
+        
 
         // Debug visualization
         if (debugMode)
@@ -134,12 +140,12 @@ public class BrickSnapper : MonoBehaviour
         Vector3 positionOffset = transform.position - snapData.originPoint.position;
 
         // Set the ghost brick position
-        Vector3 snappedPosition = targetBrick.transform.TransformPoint(targetBrick.transform.InverseTransformPoint(snapData.targetPoint.position) + positionOffset);
+        Vector3 snappedPosition = CalculateSnappedPosition(snapData, targetBrick, positionOffset);
         ghostBrickInstance.transform.position = RoundToNearestWhole(snappedPosition);
 
         // Calculate and apply the rotation
-        Quaternion targetRotation = targetBrick.transform.rotation * Quaternion.Inverse(snapData.targetPoint.rotation) * snapData.originPoint.rotation;
-        Vector3 roundedEuler = RoundToNearestRightAngle(targetRotation.eulerAngles);
+        //Quaternion targetRotation = targetBrick.transform.rotation * Quaternion.Inverse(snapData.targetPoint.rotation) * snapData.originPoint.rotation;
+        Vector3 roundedEuler = RoundToNearestRightAngle(transform.localEulerAngles);
         ghostBrickInstance.transform.rotation = Quaternion.Euler(roundedEuler);
 
         if (debugMode)
@@ -148,6 +154,48 @@ public class BrickSnapper : MonoBehaviour
             Debug.Log($"Ghost brick position: {ghostBrickInstance.transform.position}");
             Debug.Log($"Ghost brick rotation: {ghostBrickInstance.transform.rotation.eulerAngles}");
         }
+    }
+
+    private Vector3 CalculateSnappedPosition(SnapData snapData, BrickSnapper targetBrick, Vector3 positionOffset)
+    {
+        //convert the target point to the local space of the target brick
+        Vector3 localTargetPoint;
+        try
+        {
+            localTargetPoint = targetBrick.transform.InverseTransformPoint(snapData.targetPoint.position);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Failed to transform target point to local space: {ex.Message}");
+            return Vector3.zero;
+        }
+
+        Vector3 rotatedOffset = targetBrick.transform.InverseTransformDirection(positionOffset);
+
+        //add the rotated offset to the local target point
+        Vector3 adjustedLocalPoint = localTargetPoint + rotatedOffset;
+
+        //convert the adjusted local point back to world space
+        Vector3 snappedPosition;
+        try
+        {
+            snappedPosition = targetBrick.transform.TransformPoint(adjustedLocalPoint);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Failed to transform adjusted local point to world space: {ex.Message}");
+            return Vector3.zero;
+        }
+
+        if (debugMode)
+        {
+            Debug.Log($"localTargetPoint: {localTargetPoint}");
+            Debug.Log($"rotatedOffset: {rotatedOffset}");
+            Debug.Log($"adjustedLocalPoint: {adjustedLocalPoint}");
+            Debug.Log($"snappedPosition: {snappedPosition}");
+        }
+
+        return snappedPosition;
     }
 
     private Vector3 RoundToNearestRightAngle(Vector3 eulerAngles)
@@ -187,12 +235,14 @@ public class BrickSnapper : MonoBehaviour
 
             if (snapData.isValid && ghostBrickInstance.GetComponent<GhostBrick>().GetPositionSnappable())
             {
-
-                // Set the brick's position and rotation (delayed so that the hand rotation code doesn't override the brick snapping code)
-                StartCoroutine(DelayedUpdateObjectTransform(transform, ghostBrickInstance.transform.position, ghostBrickInstance.transform.localRotation));
-
                 // Set the parent after updating position and rotation
                 transform.SetParent(currentTargetBrick.transform);
+
+                // Set the brick's position and rotation (delayed so that the hand rotation code doesn't override the brick snapping code)
+                StartCoroutine(DelayedUpdateObjectTransform(transform, ghostBrickInstance.transform.position, ghostBrickInstance.transform.rotation));
+
+                // Play sound effect
+                StartCoroutine(CreateSoundObject(snapSound.clip));
                 
                 // Make the Rigidbody kinematic to prevent further physics interactions
                 Rigidbody rb = GetComponent<Rigidbody>();
@@ -221,6 +271,7 @@ public class BrickSnapper : MonoBehaviour
             {
                 Debug.LogWarning("Failed to find valid snap points");
                 DestroyGhostBrick();
+                StartCoroutine(CreateSoundObject(breakSound.clip));
                 Destroy(gameObject);
             }
         }
@@ -234,7 +285,7 @@ public class BrickSnapper : MonoBehaviour
     {
         yield return null;
         transform.position = position;
-        transform.localRotation = rotation;
+        transform.rotation = rotation;
     }
 
     private void DestroyGhostBrick()
@@ -266,5 +317,16 @@ public class BrickSnapper : MonoBehaviour
         public Transform originPoint;
         public Transform targetPoint;
         public bool isValid;
+    }
+
+    private IEnumerator CreateSoundObject(AudioClip clip)
+    {
+        GameObject soundObject = new GameObject();
+        soundObject.AddComponent<AudioSource>();
+        soundObject.GetComponent<AudioSource>().clip = clip;
+        soundObject = Instantiate(soundObject);
+        soundObject.GetComponent<AudioSource>().Play();
+        yield return new WaitForSeconds(clip.length);
+        Destroy(soundObject);
     }
 }

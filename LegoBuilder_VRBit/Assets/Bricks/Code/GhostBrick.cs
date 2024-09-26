@@ -6,6 +6,9 @@ public class GhostBrick : MonoBehaviour
 {
     [SerializeField] private bool positionSnappable; // Boolean to represent whether the current position of the ghost brick is available for the brick in hand to snap to
     [SerializeField] private GameObject collision;
+    [SerializeField] private Material blue;
+    [SerializeField] private Material red;
+    [SerializeField] private GameObject model;
 
     private void Start() {
         if (collision == null)
@@ -15,6 +18,18 @@ public class GhostBrick : MonoBehaviour
         else
         {
             positionSnappable = false;
+        }
+    }
+
+    private void Update()
+    {
+        if (positionSnappable)
+        {
+            model.GetComponent<MeshRenderer>().material = blue;
+        }
+        else
+        {
+            model.GetComponent<MeshRenderer>().material = red;
         }
     }
 
