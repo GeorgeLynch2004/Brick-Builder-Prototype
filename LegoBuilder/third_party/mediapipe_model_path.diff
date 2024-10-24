@@ -1,0 +1,249 @@
+diff --git a/mediapipe/util/BUILD b/mediapipe/util/BUILD
+index 2e08210e..8e79e6e2 100644
+--- a/mediapipe/util/BUILD
++++ b/mediapipe/util/BUILD
+@@ -195,14 +195,8 @@ cc_library(
+     srcs = [
+         "resource_util.cc",
+         "resource_util_internal.h",
+-    ] + select({
+-        "//conditions:default": ["resource_util_default.cc"],
+-        "//mediapipe:android": ["resource_util_android.cc"],
+-        "//mediapipe/framework:android_no_jni": ["resource_util_loonix.cc"],
+-        "//mediapipe:ios": ["resource_util_apple.cc"],
+-        "//mediapipe:macos": ["resource_util_default.cc"],
+-        "//mediapipe:windows": ["resource_util_windows.cc"],
+-    }),
++        "resource_util_unity.cc",
++    ],
+     hdrs = [
+         "resource_util.h",
+     ],
+@@ -227,25 +221,7 @@ cc_library(
+         "//mediapipe/framework/port:statusor",
+         "@com_google_absl//absl/log:absl_log",
+         "@com_google_absl//absl/strings",
+-        "@com_google_absl//absl/strings:str_format",
+-    ] + select({
+-        "//conditions:default": [
+-            "@com_google_absl//absl/flags:flag",
+-        ],
+-        "//mediapipe:android": [
+-            "//mediapipe/util/android:asset_manager_util",
+-            "//mediapipe/util/android/file/base",
+-        ],
+-        "//mediapipe/framework:android_no_jni": [],
+-        "//mediapipe:ios": [],
+-        "//mediapipe:macos": [
+-            "@com_google_absl//absl/flags:flag",
+-        ],
+-        "//mediapipe:windows": [
+-            "@bazel_tools//tools/cpp/runfiles",
+-            "@com_google_absl//absl/flags:flag",
+-        ],
+-    }),
++    ],
+ )
+ 
+ cc_library(
+diff --git a/mediapipe/util/resource_util.cc b/mediapipe/util/resource_util.cc
+index 38636f32..55d62a2f 100644
+--- a/mediapipe/util/resource_util.cc
++++ b/mediapipe/util/resource_util.cc
+@@ -27,6 +27,7 @@ namespace mediapipe {
+ 
+ namespace {
+ ResourceProviderFn resource_provider_ = nullptr;
++PathResolverFn path_resolver_ = nullptr;
+ }  // namespace
+ 
+ absl::Status GetResourceContents(const std::string& path, std::string* output,
+@@ -37,10 +38,21 @@ absl::Status GetResourceContents(const std::string& path, std::string* output,
+   return internal::DefaultGetResourceContents(path, output, read_as_binary);
+ }
+ 
++absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path) {
++  if (path_resolver_ == nullptr) {
++    return internal::DefaultPathToResourceAsFile(path);
++  }
++  return path_resolver_(path);
++}
++
+ bool HasCustomGlobalResourceProvider() { return resource_provider_ != nullptr; }
+ 
+ void SetCustomGlobalResourceProvider(ResourceProviderFn fn) {
+   resource_provider_ = std::move(fn);
+ }
+ 
++void SetCustomGlobalPathResolver(PathResolverFn fn) {
++  path_resolver_ = std::move(fn);
++}
++
+ }  // namespace mediapipe
+diff --git a/mediapipe/util/resource_util_custom.h b/mediapipe/util/resource_util_custom.h
+index e74af8b2..6ba61715 100644
+--- a/mediapipe/util/resource_util_custom.h
++++ b/mediapipe/util/resource_util_custom.h
+@@ -4,18 +4,25 @@
+ #include <string>
+ 
+ #include "mediapipe/framework/port/status.h"
++#include "mediapipe/framework/port/statusor.h"
+ 
+ namespace mediapipe {
+ 
+ typedef std::function<absl::Status(const std::string&, std::string*)>
+     ResourceProviderFn;
+ 
++typedef std::function<absl::StatusOr<std::string>(const std::string&)>
++    PathResolverFn;
++
+ // Returns true if files are provided via a custom resource provider.
+ bool HasCustomGlobalResourceProvider();
+ 
+ // Overrides the behavior of GetResourceContents.
+ void SetCustomGlobalResourceProvider(ResourceProviderFn fn);
+ 
++// Overfides the behavior of PathToResourceAsFile.
++void SetCustomGlobalPathResolver(PathResolverFn fn);
++
+ }  // namespace mediapipe
+ 
+ #endif  // MEDIAPIPE_UTIL_RESOURCE_UTIL_CUSTOM_H_
+diff --git a/mediapipe/util/resource_util_internal.h b/mediapipe/util/resource_util_internal.h
+index 8ae127a2..91ffc9a5 100644
+--- a/mediapipe/util/resource_util_internal.h
++++ b/mediapipe/util/resource_util_internal.h
+@@ -14,6 +14,8 @@ absl::Status DefaultGetResourceContents(const std::string& path,
+                                         std::string* output,
+                                         bool read_as_binary);
+ 
++absl::StatusOr<std::string> DefaultPathToResourceAsFile(const std::string& path);
++
+ }  // namespace internal
+ }  // namespace mediapipe
+ #endif  // MEDIAPIPE_UTIL_RESOURCE_UTIL_INTERNAL_H_
+diff --git a/mediapipe/util/resource_util_unity.cc b/mediapipe/util/resource_util_unity.cc
+new file mode 100644
+index 00000000..946be0d4
+--- /dev/null
++++ b/mediapipe/util/resource_util_unity.cc
+@@ -0,0 +1,21 @@
++#include "mediapipe/framework/port/file_helpers.h"
++#include "mediapipe/framework/port/statusor.h"
++
++namespace mediapipe {
++
++using mediapipe::file::GetContents;
++
++namespace internal {
++
++absl::Status DefaultGetResourceContents(const std::string& path,
++                                        std::string* output,
++                                        bool read_as_binary) {
++  return GetContents(path, output, read_as_binary);
++}
++
++absl::StatusOr<std::string> DefaultPathToResourceAsFile(const std::string& path) {
++  return path;
++}
++
++}  // namespace internal
++}  // namespace mediapipe
+diff --git a/third_party/external_files.bzl b/third_party/external_files.bzl
+index a3893b5f..21ccacb1 100644
+--- a/third_party/external_files.bzl
++++ b/third_party/external_files.bzl
+@@ -304,6 +304,54 @@ def external_files():
+         urls = ["https://storage.googleapis.com/mediapipe-assets/efficientdet_lite0_v1.tflite?generation=1677522750449279"],
+     )
+ 
++    http_file(
++        name = "com_google_mediapipe_efficientdet_lite0_float16_tflite",
++        sha256 = "4b59100025bea1235a84c1038879a6cccc9f6c49f5e41144e91e74d99e780993",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite?generation=1682636011592726"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_efficientdet_lite0_float32_tflite",
++        sha256 = "40338edf5ec70d43e318b0a716a84d4564cd1802759a7a07170c7e43796dbf58",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/efficientdet_lite0.tflite?generation=1682636012161435"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_efficientdet_lite0_int8_tflite",
++        sha256 = "0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite?generation=1682636013497226"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_efficientdet_lite2_float16_tflite",
++        sha256 = "5d4ebec1029bc9907aeadb9e7b4ac9cb1da6a19d01ad375210a9ae18ba173302",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/1/efficientdet_lite2.tflite?generation=1682636018392068"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_efficientdet_lite2_float32_tflite",
++        sha256 = "ad2abbf2b4e10585e15176fd7b5ef03c28dda959ae26fc142549fdd1814db91d",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float32/1/efficientdet_lite2.tflite?generation=1682636016481075"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_efficientdet_lite2_int8_tflite",
++        sha256 = "b3f50554cb0ea559e90328845f7d9ba4d13c8bff372914d24e06bc8bb72fa896",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/int8/1/efficientdet_lite2.tflite?generation=1682636018933532"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_ssd_mobilenet_v2_float16_tflite",
++        sha256 = "ee21e12bfdc464100c6008c865ab8294f6a04162e6ed2e11986f1175b02cfab2",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/ssd_mobilenet_v2/float16/1/ssd_mobilenet_v2.tflite?generation=1683072057787186"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_ssd_mobilenet_v2_float32_tflite",
++        sha256 = "b8ccb1a25d45455ba52e85f26531948e1cb75efeb94c7c3d456d54fd4d6fbdd2",
++        urls = ["https://storage.googleapis.com/mediapipe-models/object_detector/ssd_mobilenet_v2/float32/1/ssd_mobilenet_v2.tflite?generation=1683072058607165"],
++    )
++
+     http_file(
+         name = "com_google_mediapipe_empty_vocab_for_regex_tokenizer_txt",
+         sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+@@ -376,6 +424,12 @@ def external_files():
+         urls = ["https://storage.googleapis.com/mediapipe-assets/face_detection_short_range.tflite?generation=1677044301978921"],
+     )
+ 
++    http_file(
++        name = "com_google_mediapipe_blaze_face_short_range_tflite",
++        sha256 = "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
++        urls = ["https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite?generation=1682480001338381"],
++    )
++
+     http_file(
+         name = "com_google_mediapipe_face_geometry_expected_out_pbtxt",
+         sha256 = "4a4ed08055a5bc9281472dd60180d11f0cdc9a15fa1788d87a58af3d06b2c6e4",
+@@ -1144,6 +1198,24 @@ def external_files():
+         urls = ["https://storage.googleapis.com/mediapipe-assets/pose_landmarker.task?generation=1681244249587900"],
+     )
+ 
++    http_file(
++        name = "com_google_mediapipe_pose_landmarker_full_task",
++        # sha256 = "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
++        urls = ["https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task?generation=1682642785209422"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_pose_landmarker_heavy_task",
++        # sha256 = "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
++        urls = ["https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task?generation=1682642785425305"],
++    )
++
++    http_file(
++        name = "com_google_mediapipe_pose_landmarker_lite_task",
++        # sha256 = "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
++        urls = ["https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task?generation=1682624736756847"],
++    )
++
+     http_file(
+         name = "com_google_mediapipe_pose_landmark_full_tflite",
+         sha256 = "e9a5c5cb17f736fafd4c2ec1da3b3d331d6edbe8a0d32395855aeb2cdfd64b9f",
